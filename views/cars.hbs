@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h2>New Car</h2>
+    <form name="carForm" id="carForm">
+        <input type="hidden" name="id" value="0">
+        <div class="form-group">
+            <label for="carName">Car Name</label>
+            <input class="form-control" type="text" id="carName" name="carName">
+        </div>
+        <div class="form-group">
+            <label for="carModel">Car Model</label>
+            <input class="form-control" type="text" id="carModel" name="carModel">
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </div>
+    </form>
+    <table id="carList" class="table table-bordered">
+        <tr>
+            <th>Id</th>
+            <th>Car Name</th>
+            <th>Car Model</th>
+            <th>On/Off</th>
+            <th>Edit</th>
+            <th>Delete</th>
+        </tr>
+    </table>
+</div>
+<!-- Optional JavaScript -->
+<!-- jQuery first, then Popper.js, then Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+    function getCars() {
+        $.ajax({
+            url: "/cars",
+            type: "GET",
+            contentType: "application/json",
+            success: function(response) {
+                let rows = [];
+                const cars = response.cars
+                for (let i = 0; i < cars.length; i++) {
+                    rows += row(cars[i]);
+                }
+                $("#carList").append(rows);
+            }
+        });
+    }
+    function getCar(id) {
+        var car = null;
+        $.ajax({
+            url: "/cars/" + id,
+            type: "GET",
+            contentType: "application/json",
+            success: function(data) {
+                let form = document.forms.carForm;
+                form.elements.id.value = data._id;
+                form.elements.carName.value = data.name;
+                form.elements.carModel.value = data.model;
+                car = {id: data._id, name: data.name, model: data.model}
+            }
+        });
+    }
+    function addCar(car) {
+        $.ajax({
+            url: "/cars",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({
+                car
+            }),
+            success: function(car) {
+                $("#carList").append(row(car));
+                resetForm();
+            }
+        });
+    }
+    function updateCar(id, car) {
+        $.ajax({
+            url: "/cars",
+            method: "PUT",
+            contentType: "application/json",
+            data: JSON.stringify({
+                id,
+                car
+            }),
+            success: function(car) {
+                $(`tr[data-rowid='${car._id}']`).replaceWith(row(car));
+                resetForm();
+            }
+        });
+    }
+    function deleteCar(id) {
+        $.ajax({
+            url: "/cars/" + id,
+            method: "DELETE",
+            contentType: "application/json",
+            success: function(car) {
+                $(`tr[data-rowid='${car._id}']`).remove();
+            }
+        });
+    }
+    function row(car) {
+        return `<tr data-rowid=${car._id}>
+                    <td>${car._id}</td>
+                    <td>${car.name}</td>
+                    <td>${car.model}</td>
+                    <td>
+                        <div class="custom-control custom-switch">
+                          <input type="checkbox" class="custom-control-input switchCar" id="customSwitch_${car._id}" data-id=${car._id}>
+                           <label class="custom-control-label" for="customSwitch_${car._id}">Toggle this switch element</label>
+                        </div>
+                    </td>
+                    <td><button class='btn btn-sm btn-primary editCar' data-id=${car._id}>Редагувати</button></td>
+                    <td><button class='btn btn-sm btn-primary removeCar' data-id=${car._id}>Видалити</button></td>
+                </tr>`;
+    }
+
+    function resetForm() {
+        let form = document.forms["carForm"];
+        form.reset();
+        form.elements["id"].value = 0;
+    }
+
+    $("#carForm").submit(function(e) {
+        e.preventDefault();
+        let id = this.elements["id"].value;
+        const car = {
+            name: this.elements["carName"].value,
+            model: this.elements["carModel"].value
+        }
+        if (id == 0) {
+            addCar(car);
+        } else {
+            updateCar(id, car);
+        }
+    });
+    $("body").on("click", ".removeCar", function() {
+        let id = $(this).data("id");
+        deleteCar(id);
+    });
+
+    $("body").on("click", ".editCar", function() {
+        let id = $(this).data("id");
+        getCar(id);
+    })
+    getCars();
+
+    const socket = io()
+
+    $("body").on("click", ".switchCar", function() {
+        let id = $(this).data("id");
+
+        if ($(this).is(':checked')) {
+            socket.emit('join', id, (error) => {
+                if (error) {
+                    console.log(error)
+                }
+            })
+        } else {
+            socket.emit('left', id, (error) => {
+                if (error) {
+                    console.log(error)
+                }
+            })
+        }
+
+    })
+
+</script>
+</body>
+</html>
+
